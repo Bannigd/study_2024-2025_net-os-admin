@@ -7,23 +7,109 @@
 \begin{document}
 
 \maketitle
-\newpage
 
 \tableofcontents
-
 \newpage
+
 \section{Цель работы}
+Целью данной работы является приобретение практических навыков установки Rocky Linux на виртуальную машину с помощью инструмента Vagrant.
 
 \newpage
 \section{Выполнение работы}
-Пример вставки изображения.
-\begin{center}
-    \centering
-    \includegraphics[width=\textwidth]{../images/test.png}
-    \captionof{figure}{Подпись к графику.}
-    \label{img:test}
-\end{center}
+\subsection{Подготовка рабочего каталога}
+Подготовка лабораторного стенда проводилась в ОС Linux. Предварительно были установлены:
+\begin{itemize}
+    \item Vagrant v2.3.4 (\url{https://vagrantup.com});
+    \item VirtualBox v7.0.16 (\url{https://www.virtualbox.org}). Стоит отметить, что по умолчанию пакетный менеджер \texttt{dnf} устанавливает версию 7.1.0, в которой присутствует ошибка с настройкой опции графического ускорения, что не позволяет собрать \texttt{box}-файл. Откат к прошлой версии устарняет проблему.
+    \item Packer v1.11.2 (\url{https://www.packer.io}).
+\end{itemize}
 
+Перед началом работы создан временный каталог \texttt{~/tmp/dastarikov}, в котором проводилась работа. В нем расположили образ ОС Rocky Linux v9.4  (\url{https://www.rockylinux.org/download}), и 2 подкаталога \texttt{packer} и \texttt{vagrant}, где находятся скрипты и конфигурационные файлы, необходимые для сборки \texttt{box}-файла.
+
+Сделали несколько изменений в файлах конфигурации: в файлах \texttt{vagrant/default/01-user.sh} и \texttt{vagrant/default/01-hostname.sh} присвоили переменной \texttt{username} значение \texttt{dastarikov}.
+
+\subsection{Рарзвертывание лабораторного стенда на ОС Linux}
+\begin{enumerate}
+    \item Перешли в каталог с проектом (в нем также должен располагаться образ OC Rocky Linux):
+        \begin{minted}{bash}
+        cd /var/tmp/dastarikov/packer
+        \end{minted}
+    \item В терминале набрали
+        \begin{minted}{bash}
+        makе help
+        \end{minted}
+    \item Для формирования \texttt{box}\-файла с дистрибутивом Rocky Linux для VirtualBox в терминале набрали
+        \begin{minted}{bash}
+        make init
+        make box
+        \end{minted}
+    \item Далее начнинается процесс скачивания, распаковки и установки драйверов VirtualBox и дистрибутива на виртуальную машину. После завершения в каталоге \texttt{packer} сформировался образ \texttt{vagrant\-virtualbox\-rocky\-9\-x86\_64.box}
+    \item Скопировали файл \texttt{vagrant\-virtualbox\-rocky\-9\-x86\_64.box} в рабочий каталог в подкаталог \texttt{vagrant}.
+    \item Для регистрации образа виртуальной машины в Vagrant в терминале в каталоге \texttt{vagrant} набрали
+        \begin{minted}{bash}
+        make addbox
+        \end{minted}
+    \item Запустили виртуальную машину Server, введя
+        \begin{minted}{bash}
+        make server-up
+        \end{minted}
+    \item Запустили виртуальную машину Client, введя
+        \begin{minted}{bash}
+        make client-up
+        \end{minted}
+    \item Подключились к серверу из консоли:
+        \begin{minted}{bash}
+        vagrant ssh server
+        \end{minted}
+    \item Ввели пароль \texttt{vagrant}.
+    \item Перешли к пользователю dastarikov
+        \begin{minted}{bash}
+        su - dastarikov
+        \end{minted}
+    \item Отлогинились.
+    \item Проделали тоже самое для клиента.
+    \item Выключили обе виртуальные машины:
+        \begin{minted}{bash}
+        make server-halt
+        make client-halt
+        \end{minted}
+    \item Убедились, что запуск обеих виртуальных машин прошёл успешно, залогинились под пользователем \texttt{vagrant} с паролем \texttt{vagrant} в графическом окружении.
+\end{enumerate}
+
+\subsection{Внесение изменений в настройки внутреннего окружения виртуальной машины}
+\begin{enumerate}
+    \item Для отработки созданных скриптов во время загрузки виртуальных машин убедились, что в конфигурационном файле Vagrantfile до строк с конфигурацией сервера имеется следующая запись:
+        \begin{minted}{bash}
+        # Common configuration
+        config.vm.provision "common user",
+        type: "shell",
+        preserve_order: true,
+        path: "provision/default/01-user.sh"
+        config.vm.provision "common hostname",
+        type: "shell",
+        preserve_order: true,
+        run: "always",
+        path: "provision/default/01-hostname.sh"
+        \end{minted}
+    \item Зафиксировали внесённые изменения для внутренних настроек виртуальных машин, введя в терминале:
+        \begin{minted}{bash}
+        make server-provision
+        \end{minted}
+    Затем
+        \begin{minted}{bash}
+        make client-provision
+        \end{minted}
+    \item Залогинились на сервере и клиенте под созданным пользователем. Убедитесь, что в терминале приглашение отображается в виде dastarikov@server.dastarikov.net на сервере и в виде dastarikov@client.dastarikov.net на клиенте.
+    \item Выключили виртуальные машины.
+\end{enumerate}
+% Пример вставки изображения.
+% \begin{center}
+%     \centering
+%     \includegraphics[width=\textwidth]{../images/test.png}
+%     \captionof{figure}{Подпись к графику.}
+%     \label{img:test}
+% \end{center}
+%
 
 \section{Выводы}
 
