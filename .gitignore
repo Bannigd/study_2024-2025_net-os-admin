@@ -6,8 +6,11 @@
 *.nav
 *.snm
 *.vrb
+*.fdb_latexmk
+*.fls
+
 _minted-report
-_minted-presentation
+_minted-presentationo
 _minted-main
 
 setup.sh
