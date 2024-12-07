@@ -1,0 +1,378 @@
+\input{preamble.tex}
+
+\title{Отчет по лабораторной работе № 2. \\ Настройка DNS-сервера.}
+\author{Данила Стариков \\ НПИбд-02-22}
+\date{2024}
+
+\begin{document}
+
+\maketitle
+\newpage
+
+\tableofcontents
+
+\newpage
+\section{Цель работы}
+Приобретение практических навыков по установке и конфигурированию DNS- сервера, усвоение принципов работы системы доменных имён.
+
+\newpage
+\section{Выполнение работы}
+\subsection{Установка DNS-сервера}
+\begin{enumerate}
+    \item Загрузили вашу операционную систему и перейдите в рабочий каталог с проектом:
+        \begin{minted}{bash}
+        cd ~/tmp/dastarikov/vagrant
+        \end{minted}
+    \item Запустили виртуальную машину server:
+        \begin{minted}{bash}
+        make server-up
+        \end{minted}
+    \item На виртуальной машине server вошли под созданным  в предыдущей работе пользователем и открыли терминал. Перешли в режим суперпользователя:
+        \begin{minted}{bash}
+        sudo -i
+        \end{minted}
+    \item Установили bind и bind-utils:
+        \begin{minted}{bash}
+        dnf -y install bind bind-utils
+        \end{minted}
+    \item В качестве упражнения с помощью утилиты dig сделали запрос к DNS-адресу www.yandex.ru:
+        \begin{minted}{bash}
+        dig www.yandex.ru
+        \end{minted}
+Проанализируйте в отчёте построчно выведенную на экран информацию.
+\end{enumerate}
+
+\subsection{Конфигурирование кэширующего DNS-сервера}
+\subsubsection{Конфигурирование кэширующего DNS-сервера при отсутствии фильтрации DNS-запросов маршрутизаторами}
+\begin{enumerate}
+    \item В отчёте проанализируйте построчно содержание файлов /etc/resolv.conf, /etc/named.conf, /var/named/named.ca, /var/named/named.localhost, /var/named/named.loopback.
+    \item Запустили DNS-сервер:
+        \begin{minted}{bash}
+        systemctl start named
+        \end{minted}
+    \item Включили запуск DNS-сервера в автозапуск при загрузке системы:
+        \begin{minted}{bash}
+        systemctl enable named
+        \end{minted}
+    \item Проанализировали в отчёте отличие в выведенной на экран информации при выполнении команд
+        \begin{minted}{bash}
+        dig www.yandex.ru
+        \end{minted}
+    и
+        \begin{minted}{bash}
+        dig @127.0.0.1 www.yandex.ru
+        \end{minted}
+    \item Сделали DNS-сервер сервером по умолчанию для хоста server и внутренней виртуальной сети. Для этого требуется изменить настройки сетевого соединения eth0 в NetworkManager, переключив его на работу с внутренней сетью и указав для него в качестве DNS-сервера по умолчанию адрес 127.0.0.1:
+        \begin{minted}{bash}
+        nmcli connection edit eth0
+        remove ipv4.dns
+        set ipv4.ignore-auto-dns yes
+        set ipv4.dns 127.0.0.1
+        save
+        quit
+        \end{minted}
+    \item Сделали тоже самое для соединения System eth0 (если оно активно):
+        \begin{minted}{bash}
+        nmcli connection edit System\ eth0
+        remove ipv4.dns
+        set ipv4.ignore-auto-dns yes
+        set ipv4.dns 127.0.0.1
+        save
+        quit
+        \end{minted}
+    \item Перезапустили NetworkManager:
+        \begin{minted}{bash}
+        systemctl restart NetworkManager
+        \end{minted}
+    Проверили наличие изменений в файле /etc/resolv.conf.
+    \item Для настройки направления DNS-запросов от всех узлов внутренней сети, включая запросы от узла server, через узел server внесли изменения в файл /etc/named.conf, заменив строку
+        \begin{minted}{bash}
+        listen-on port 53 { 127.0.0.1; };
+        \end{minted}
+    на
+        \begin{minted}{bash}
+        listen-on port 53 { 127.0.0.1; any; };
+        \end{minted}
+    и строку
+        \begin{minted}{bash}
+        allow-query { localhost; };
+        \end{minted}
+    на
+        \begin{minted}{bash}
+        allow-query { localhost; 192.168.0.0/16; };
+        \end{minted}
+    \item Внесли изменения в настройки межсетевого экрана узла server, разрешив работу с DNS:
+        \begin{minted}{bash}
+        firewall-cmd --add-service=dns
+        firewall-cmd --add-service=dns --permanent
+        \end{minted}
+    \item Убедились, что DNS-запросы идут через узел server, который прослушивает порт 53:
+        \begin{minted}{bash}
+        lsof | grep UDP
+        \end{minted}
+\end{enumerate}
+
+\subsubsection{Конфигурирование кэширующего DNS-сервера при наличии фильтрации DNS-запросов маршрутизаторами}
+В случае возникновения в сети ситуации, когда DNS-запросы от сервера филь- труются сетевым оборудованием, следует добавить перенаправление DNS-запросов на конкретный вышестоящий DNS-сервер. Для этого в конфигурационный файл named.conf в секцию options добавили
+        \begin{minted}{bash}
+    forwarders { список DNS-серверов };
+    forward first;
+        \end{minted}
+% Текущий список DNS-серверов можно получить, введя на локальном хосте (на котором развёртывается образ виртуальной машины) следующую команду:
+Получили список DNS-серверов:
+        \begin{minted}{bash}
+    cat /etc/resolv.conf
+        \end{minted}
+% Например, для хостов в дисплейном классе мы получим следующие данные для конфигурационного файла named.conf виртуальной машины server:
+%     forwarders { 10.128.0.240; 80.250.174.240; };
+%     forward first;
+Кроме того, возможно вышестоящий DNS-сервер может не поддерживать технологию DNSSEC, тогда следует в конфигурационном файле named.conf указать следующие настройки:
+        \begin{minted}{bash}
+    dnssec-enable no;
+    dnssec-validation no;
+        \end{minted}
+\subsection{Конфигурирование первичного DNS-сервера}
+\begin{enumerate}
+     \item Скопировали шаблон описания DNS-зон named.rfc1912.zones из каталога /etc в каталог /etc/named и переименовали его в user.net (вместо user укажите свой логин):
+        \begin{minted}{bash}
+        cp /etc/named.rfc1912.zones /etc/named/
+        cd /etc/named
+        mv /etc/named/named.rfc1912.zones /etc/named/user.net
+        \end{minted}
+    \item Включили файл описания зоны /etc/named/user.net в конфигурационном файле DNS /etc/named.conf, добавив в нём в конце строку:
+        \begin{minted}{bash}
+        include "/etc/named/user.net";
+        \end{minted}
+(вместо user укажите свой логин).
+    \item Открыли файл /etc/named/user.net на редактирование и вместо зоны
+        \begin{minted}{bash}
+        zone "localhost.localdomain" IN {
+            type master;
+            file "named.localhost";
+            allow-update { none; };
+        };
+        \end{minted}
+    прописали свою прямую зону:
+        \begin{minted}{bash}
+        zone "user.net" IN {
+            type master;
+            file "master/fz/user.net";
+            allow-update { none; };
+        };
+        \end{minted}
+    Далее, вместо зоны
+        \begin{minted}{bash}
+        zone "1.0.0.127.in-addr.arpa" IN {
+            type master;
+            file "named.loopback";
+            allow-update { none; };
+        };
+        \end{minted}
+    прописали свою обратную зону:
+        \begin{minted}{bash}
+        zone "1.168.192.in-addr.arpa" IN {
+            type master;
+            file "master/rz/192.168.1";
+            allow-update { none; };
+        };
+        \end{minted}
+    Остальные записи в файле /etc/named/user.net удалили.
+    \item В каталоге /var/named создали подкаталоги master/fz и master/rz, в которых будут располагаться файлы прямой и обратной зоны соответственно:
+        \begin{minted}{bash}
+        cd /var/named
+        mkdir -p /var/named/master/fz
+        mkdir -p /var/named/master/rz
+        \end{minted}
+    \item Скопировали шаблон прямой DNS-зоны named.localhost из каталога /var/named в каталог /var/named/master/fz и переименовали его в user.net (вместо user укажите свой логин):
+        \begin{minted}{bash}
+        cp /var/named/named.localhost /var/named/master/fz/
+        cd /var/named/master/fz/
+        mv named.localhost user.net
+        \end{minted}
+    \item Изменили файл /var/named/master/fz/user.net, указав необходимые DNS-записи для прямой зоны. В этом файле DNS-имя сервера @ rname.invalid. заменили на @ server.user.net. (вместо user должен быть указан ваш логин); формат серийного номера ГГГГММДДВВ (ГГГГ — год, ММ — месяц, ДД — день, ВВ — номер ревизии) [1]; адрес в A-записи заменили с 127.0.0.1 на 192.168.1.1; в директиве \$ORIGIN задали текущее имя домена user.net. (вместо user должен быть указан ваш логин), а затем указаны имена и адреса серверов в этом домене в виде A-записей DNS (на данном этапе должен быть прописан сервер с именем ns и адресом 192.168.1.1).
+        % При этом внимательно отнеситесь к синтаксису в этом файле, а именно к пробелам и табуляции. В результате должен получиться файл следующего содержания:
+        % NOTE: взять из сгенерированного файла
+        \begin{minted}{bash}
+        $TTL 1D
+        @ IN SOA @ server.user.net. (
+        2024072700 ; serial
+        1D ; refresh
+        1H ; retry
+        1W ; expire
+        3H ) ; minimum
+        NS @
+        A 192.168.1.1
+        $ORIGIN user.net.
+        server A 192.168.1.1
+        n\end{minted}
+        s A 192.168.1.1
+    \item Скопировали шаблон обратной DNS-зоны named.loopback из каталога /var/named в каталог /var/named/master/rz и переименовали его в 192.168.1:
+        \begin{minted}{bash}
+        cp /var/named/named.loopback /var/named/master/rz/
+        cd /var/named/master/rz/
+        mv named.loopback 192.168.1
+        \end{minted}
+    \item Изменили файл /var/named/master/rz/192.168.1, указав необходимые DNS-записи для обратной зоны. В этом файле DNS-имя сервера @ rname.invalid. заменили на @ server.user.net. (вместо user должен быть указан ваш логин); формат серийного номера ГГГГММДДВВ (ГГГГ — год, ММ — месяц, ДД — день, ВВ — номер ревизии); адрес в A-записи заменили с 127.0.0.1 на 192.168.1.1; в директиве \$ORIGIN задали название обратной зоны в виде 1.168.192.in-addr.arpa., затем задали PTR-записи (на данном этапе должна быть задана PTR запись, ставящая в соответствие адресу 192.168.1.1 DNS-адрес ns.user.net). В результате должен получиться файл следующего содержания:
+        % NOTE: взять из сгенерированного файла
+        \begin{minted}{bash}
+        $TTL 1D
+        @ IN SOA @ server.user.net. (
+        2024072700 ; serial
+        34 Лабораторная работа № 2
+        1D ; refresh
+        1H ; retry
+        1W ; expire
+        3H ) ; minimum
+        NS @
+        A 192.168.1.1
+        PTR server.user.net.
+        $ORIGIN 1.168.192.in-addr.arpa.
+        1 PTR server.user.net.
+        1 PTR ns.user.net.
+        \end{minted}
+    \item Далее исправили права доступа к файлам в каталогах /etc/named и /var/named, чтобы демон named мог с ними работать:
+        \begin{minted}{bash}
+        chown -R named:named /etc/named
+        chown -R named:named /var/named
+        \end{minted}
+    \item В системах с запущенным SELinux все процессы и файлы имеют специальные метки безопасности (так называемый «контекст безопасности»), используемые системой для принятия решений по доступу к этим процессам и файлам. После изменения доступа к конфигурационным файлам named восстановили их метки в SELinux:
+        \begin{minted}{bash}
+        restorecon -vR /etc
+        restorecon -vR /var/named
+        \end{minted}
+    Для проверки состояния переключателей SELinux, относящихся к named, ввели:
+        \begin{minted}{bash}
+        getsebool -a | grep named
+        \end{minted}
+    При необходимости дали named разрешение на запись в файлы DNS-зоны:
+        \begin{minted}{bash}
+        setsebool named_write_master_zones 1
+        setsebool -P named_write_master_zones 1
+        \end{minted}
+    \item Во дополнительном терминале запустили в режиме реального времени расширенный лог системных сообщений, чтобы проверить корректность работы системы:
+        \begin{minted}{bash}
+        journalctl -x -f
+        \end{minted}
+    и в первом терминале перезапустили DNS-сервер:
+        \begin{minted}{bash}
+        systemctl restart named
+        \end{minted}
+    % NOTE: Если в логе выдаются сообщения об ошибках, то устраните их и повторно перезапустите DNS-сервер.
+\end{enumerate}
+
+\subsection{Анализ работы DNS-сервера}
+\begin{enumerate}
+    \item При помощи утилиты dig получили описание DNS-зоны с сервера ns.user.net (вместо user должен быть указан ваш логин):
+        \begin{minted}{bash}
+        dig ns.user.net
+        \end{minted}
+    и проанализировали его.
+    \item При помощи утилиты host проанализировали корректность работы DNS-сервера:
+        \begin{minted}{bash}
+        host -l user.net
+        host -a user.net
+        host -t A user.net
+        host -t PTR 192.168.1.1
+        \end{minted}
+(вместо user должен быть указан ваш логин).
+\end{enumerate}
+
+\subsection{Внесение изменений в настройки внутреннего окружения виртуальной машины}
+\begin{enumerate}
+    \item На виртуальной машине server перешли в каталог для внесения изменений в настройки внутреннего окружения /vagrant/provision/server/, создайте в нём каталог dns, в который поместили в соответствующие каталоги конфигурационные файлы DNS:
+        \begin{minted}{bash}
+        cd /vagrant
+        mkdir -p /vagrant/provision/server/dns/etc/named
+        mkdir -p /vagrant/provision/server/dns/var/named/master/
+        cp -R /etc/named.conf /vagrant/provision/server/dns/etc/
+        cp -R /etc/named/* /vagrant/provision/server/dns/etc/named/
+        cp -R /var/named/master/* /vagrant/provision/server/dns/var/named/master/
+        \end{minted}
+    \item В каталоге /vagrant/provision/server создали исполняемый файл dns.sh:
+        \begin{minted}{bash}
+        touch dns.sh
+        chmod +x dns.sh
+        \end{minted}
+        Открыв его на редактирование, прописали в нём следующий скрипт:
+        \begin{minted}{bash}
+        #!/bin/bash
+        echo "Provisioning script $0"
+        echo "Install needed packages"
+        dnf -y install bind bind-utils
+        echo "Copy configuration files"
+        cp -R /vagrant/provision/server/dns/etc/* /etc
+        cp -R /vagrant/provision/server/dns/var/named/* /var/named
+        chown -R named:named /etc/named
+        chown -R named:named /var/named
+        restorecon -vR /etc
+        restorecon -vR /var/named
+        echo "Configure firewall"
+        firewall-cmd --add-service=dns
+        firewall-cmd --add-service=dns --permanent
+        echo "Tuning SELinux"
+        setsebool named_write_master_zones 1
+        setsebool -P named_write_master_zones 1
+        echo "Change dns server address"
+        nmcli connection edit "System eth0" <<EOF
+        remove ipv4.dns
+        set ipv4.ignore-auto-dns yes
+        set ipv4.dns 127.0.0.1
+        save
+        quit
+        EOF
+        systemctl restart NetworkManager
+        echo "Start named service"
+        systemctl enable named
+        systemctl start named
+        \end{minted}
+    % Этот скрипт, по сути, повторяет произведённые вами действия по установке и настройке DNS-сервера: подставляет в нужные каталоги подготовленные вами конфигурационные файлы; меняет соответствующим образом права доступа, метки безопасности SELinux и правила межсетевого экрана; настраивает сетевое соединение так, чтобы сервер выступал DNS-сервером по умолчанию для узлов внутренней виртуальной сети; запускает DNS-сервер.
+    \item Для отработки созданного скрипта во время загрузки виртуальной машины server в конфигурационном файле Vagrantfile добавили в разделе конфигурации для сервера:
+        \begin{minted}{hcl}
+        server.vm.provision "server dns",
+        type: "shell",
+        preserve_order: true,
+        path: "provision/server/dns.sh"
+        \end{minted}
+\end{enumerate}
+
+\subsection{Ответы на контрольные вопросы}
+\begin{enumerate}
+    \item Что такое DNS?
+    \item Каково назначение кэширующего DNS-сервера?
+    \item Чем отличается прямая DNS-зона от обратной?
+    \item В каких каталогах и файлах располагаются настройки DNS-сервера? Кратко охарактеризуйте, за что они отвечают.
+    \item Что указывается в файле resolv.conf?
+    \item Какие типы записи описания ресурсов есть в DNS и для чего они используются?
+    \item Для чего используется домен in-addr.arpa?
+    \item Для чего нужен демон named?
+    \item В чём заключаются основные функции slave-сервера и master-сервера?
+    \item Какие параметры отвечают за время обновления зоны?
+    \item Как обеспечить защиту зоны от скачивания и просмотра?
+    \item Какая запись RR применяется при создании почтовых серверов?
+    \item Как протестировать работу сервера доменных имён?
+    \item Как запустить, перезапустить или остановить какую-либо службу в системе?
+    \item Как посмотреть отладочную информацию при запуске какого-либо сервиса или службы?
+    \item Где храниться отладочная информация по работе системы и служб? Как её посмотреть?
+    \item Как посмотреть, какие файлы использует в своей работе тот или иной процесс? Приведите несколько примеров.
+    \item Приведите несколько примеров по изменению сетевого соединения при помощи командного интерфейса nmcli.
+    \item Что такое SELinux?
+    \item Что такое контекст (метка) SELinux?
+    \item Как восстановить контекст SELinux после внесения изменений в конфигурационные файлы?
+    \item Как создать разрешающие правила политики SELinux из файлов журналов, содержащих сообщения о запрете операций?
+    \item Что такое булевый переключатель в SELinux?
+    \item Как посмотреть список переключателей SELinux и их состояние?
+    \item Как изменить значение переключателя SELinux?
+\end{enumerate}
+
+Пример вставки изображения.
+\begin{center}
+    \centering
+    \includegraphics[width=\textwidth]{../images/test.png}
+    \captionof{figure}{Подпись к графику.}
+    \label{img:test}
+\end{center}
+
+
+\section{Выводы}
+
+\end{document}
