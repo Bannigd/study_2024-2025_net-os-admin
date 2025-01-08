@@ -8,9 +8,12 @@
 *.vrb
 *.fdb_latexmk
 *.fls
+*.bbl
+*.dvi
+*.blg
 
 _minted-report
-_minted-presentationo
+_minted-presentation
 _minted-main
 
 setup.sh
