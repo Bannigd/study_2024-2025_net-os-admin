@@ -12,6 +12,7 @@
 *.dvi
 *.blg
 
+*.el
 _minted-report
 _minted-presentation
 _minted-main
