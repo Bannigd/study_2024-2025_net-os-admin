@@ -1,8 +1,8 @@
 all:
-	pdflatex --shell-escape presentation.tex.tex -interaction=scrollmode
+	pdflatex --shell-escape presentation -interaction=scrollmode
 
 draft:
-	pdflatex --shell-escape presentation.tex.tex -interaction=scrollmode -draftmode
+	pdflatex --shell-escape presentation interaction=scrollmode -draftmode
 
 print:
-	ls presentation.tex.*
+	ls presentation.*
